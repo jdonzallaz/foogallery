@@ -14,8 +14,10 @@ if ( ! class_exists( 'FooGallery_Admin' ) ) {
 		 *
 		 */
 		function __construct() {
+			//init some other actions
 			add_action( 'init', array( $this, 'init' ) );
 
+			new FooGallery_Admin_Settings_Image_Optimization();
 			new FooGallery_Admin_Settings();
 			new FooGallery_Admin_Menu();
 			new FooGallery_Admin_Gallery_Editor();
@@ -24,6 +26,8 @@ if ( ! class_exists( 'FooGallery_Admin' ) ) {
 			new FooGallery_Admin_Columns();
 			new FooGallery_Admin_Extensions();
 			new FooGallery_Boilerplate_Download_Handler();
+			new FooGallery_Attachment_Fields();
+            new FooGallery_Admin_CSS_Load_Optimizer();
 		}
 
 		function init() {
@@ -32,7 +36,6 @@ if ( ! class_exists( 'FooGallery_Admin' ) ) {
 			add_action( 'foogallery_admin_print_scripts', array( $this, 'admin_print_scripts' ) );
 			// Add a links to the plugin listing
 			add_filter( 'foogallery_admin_plugin_action_links', array( $this, 'plugin_listing_links' ) );
-
 			//output shortcode for javascript
 			add_action( 'admin_footer', array( $this, 'output_shortcode_variable' ), 200 );
 		}
@@ -57,11 +60,11 @@ if ( ! class_exists( 'FooGallery_Admin' ) ) {
 		 */
 		function plugin_listing_links( $links ) {
 			// Add a 'Settings' link to the plugin listing
-			$links[] = '<a href="' . foogallery_admin_settings_url() . '"><b>' . __( 'Settings', 'foogallery' ) . '</b></a>';
+			$links[] = '<a href="' . esc_url( foogallery_admin_settings_url() ) . '"><b>' . __( 'Settings', 'foogallery' ) . '</b></a>';
 
-			$links[] = '<a href="' . foogallery_admin_extensions_url() . '"><b>' . __( 'Extensions', 'foogallery' ) . '</b></a>';
+			$links[] = '<a href="' . esc_url( foogallery_admin_extensions_url() ) . '"><b>' . __( 'Extensions', 'foogallery' ) . '</b></a>';
 
-			$links[] = '<a href="' . foogallery_admin_help_url() . '"><b>' . __( 'Help', 'foogallery' ) . '</b></a>';
+			$links[] = '<a href="' . esc_url( foogallery_admin_help_url() ) . '"><b>' . __( 'Help', 'foogallery' ) . '</b></a>';
 
 			return $links;
 		}

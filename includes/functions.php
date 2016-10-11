@@ -63,12 +63,18 @@ function foogallery_permalink() {
 }
 
 /**
- * @param string $key
+ * Return the FooGallery saved setting, or a default value
+ *
+ * @param string $key The key for the setting
+ *
+ * @param bool $default The default if no value is saved or found
+ *
+ * @return mixed
  */
-function foogallery_get_setting( $key ) {
+function foogallery_get_setting( $key, $default = false ) {
 	$foogallery = FooGallery_Plugin::get_instance();
 
-	return $foogallery->options()->get( $key, foogallery_get_default( $key ) );
+	return $foogallery->options()->get( $key, foogallery_get_default( $key, $default ) );
 }
 
 /**
@@ -96,22 +102,27 @@ function foogallery_gallery_shortcode_tag() {
  *
  * @param string $key The default config key to retrieve.
  *
- * @return string       Key value on success, false on failure.
+ * @param bool $default The default if no default is set or found
+ *
+ * @return string Key value on success, false on failure.
  */
-function foogallery_get_default( $key ) {
+function foogallery_get_default( $key, $default = false ) {
 
 	$defaults = array(
 		'gallery_template'           => 'default',
 		'gallery_permalinks_enabled' => false,
 		'gallery_permalink'          => 'gallery',
 		'lightbox'                   => 'none',
+		'thumb_jpeg_quality'         => '80',
+		'thumb_resize_animations'    => true,
+		'gallery_sorting'            => ''
 	);
 
 	// A handy filter to override the defaults
 	$defaults = apply_filters( 'foogallery_defaults', $defaults );
 
 	// Return the key specified.
-	return isset($defaults[ $key ]) ? $defaults[ $key ] : false;
+	return isset($defaults[ $key ]) ? $defaults[ $key ] : $default;
 }
 
 /**
@@ -151,6 +162,15 @@ function foogallery_admin_extensions_url() {
 }
 
 /**
+ * Returns the FooGallery system info page Url within the admin
+ *
+ * @return string The Url to the FooGallery system info page in admin
+ */
+function foogallery_admin_systeminfo_url() {
+	return admin_url( add_query_arg( array( 'page' => 'foogallery-systeminfo' ), foogallery_admin_menu_parent_slug() ) );
+}
+
+/**
  * Get a foogallery template setting for the current foogallery that is being output to the frontend
  * @param string	$key
  * @param string	$default
@@ -168,7 +188,7 @@ function foogallery_gallery_template_setting( $key, $default = '' ) {
 		//try to get the value from the arguments
 		$value = $current_foogallery_arguments[ $key ];
 
-	} else if ( $current_foogallery->settings && array_key_exists( $settings_key, $current_foogallery->settings ) ) {
+	} else if ( !empty( $current_foogallery ) && $current_foogallery->settings && array_key_exists( $settings_key, $current_foogallery->settings ) ) {
 		//then get the value out of the saved gallery settings
 		$value = $current_foogallery->settings[ $settings_key ];
 	} else {
@@ -227,18 +247,22 @@ function foogallery_add_submenu_page( $menu_title, $capability, $menu_slug, $fun
  *
  * @return FooGallery[] array of FooGallery galleries
  */
-function foogallery_get_all_galleries() {
-	$gallery_posts = get_posts(
-		array(
-			'post_type'     => FOOGALLERY_CPT_GALLERY,
-			'post_status'	=> 'any',
-			'cache_results' => false,
-			'nopaging'      => true,
-		)
+function foogallery_get_all_galleries( $excludes = false ) {
+	$args = array(
+		'post_type'     => FOOGALLERY_CPT_GALLERY,
+		'post_status'	=> array( 'publish', 'draft' ),
+		'cache_results' => false,
+		'nopaging'      => true,
 	);
 
+	if ( is_array( $excludes ) ) {
+		$args['post__not_in'] = $excludes;
+	}
+
+	$gallery_posts = get_posts( $args );
+
 	if ( empty( $gallery_posts ) ) {
-		return false;
+		return array();
 	}
 
 	$galleries = array();
@@ -335,5 +359,132 @@ function foogallery_build_class_attribute( $gallery ) {
 		}
 	}
 
+	$classes = apply_filters( 'foogallery_build_class_attribute', $classes );
+
 	return implode( ' ', $classes );
+}
+
+/**
+ * Render a foogallery
+ *
+ * @param $gallery_id int The id of the foogallery you want to render
+ */
+function foogallery_render_gallery( $gallery_id ) {
+	//create new instance of template engine
+	$engine = new FooGallery_Template_Loader();
+
+	$engine->render_template( array(
+		'id' => $gallery_id
+	) );
+}
+
+/**
+ * Returns the available sorting options that can be chosen for galleries and albums
+ */
+function foogallery_sorting_options() {
+	return apply_filters( 'foogallery_sorting_options', array(
+		'' => __('Default', 'foogallery'),
+		'date_desc' => __('Date created - newest first', 'foogallery'),
+		'date_asc' => __('Date created - oldest first', 'foogallery'),
+		'modified_desc' => __('Date modified - most recent first', 'foogallery'),
+		'modified_asc' => __('Date modified - most recent last', 'foogallery'),
+		'title_asc' => __('Title - alphabetically', 'foogallery'),
+		'title_desc' => __('Title - reverse', 'foogallery'),
+		'rand' => __('Random', 'foogallery')
+	) );
+}
+
+function foogallery_sorting_get_posts_orderby_arg( $sorting_option ) {
+	$orderby_arg = 'post__in';
+
+	switch ( $sorting_option ) {
+		case 'date_desc':
+		case 'date_asc':
+			$orderby_arg = 'date';
+			break;
+		case 'modified_desc':
+		case 'modified_asc':
+			$orderby_arg = 'modified';
+			break;
+		case 'title_asc':
+		case 'title_desc':
+			$orderby_arg = 'title';
+			break;
+		case 'rand':
+			$orderby_arg = 'rand';
+			break;
+	}
+
+	return apply_filters( 'foogallery_sorting_get_posts_orderby_arg', $orderby_arg, $sorting_option );
+}
+
+function foogallery_sorting_get_posts_order_arg( $sorting_option ) {
+	$order_arg = 'DESC';
+
+	switch ( $sorting_option ) {
+		case 'date_asc':
+		case 'modified_asc':
+		case 'title_asc':
+		$order_arg = 'ASC';
+			break;
+	}
+
+	return apply_filters( 'foogallery_sorting_get_posts_order_arg', $order_arg, $sorting_option );
+}
+
+/**
+ * Activate the default templates extension when there are no gallery templates loaded
+ */
+function foogallery_activate_default_templates_extension() {
+	$api = foogallery_extensions_api();
+	$api->activate( 'default_templates' );
+}
+
+/**
+ * Allow FooGallery to enqueue stylesheet and allow them to be enqueued in the head on the next page load
+ *
+ * @param $handle string
+ * @param $src string
+ * @param array $deps
+ * @param bool $ver
+ * @param string $media
+ */
+function foogallery_enqueue_style( $handle, $src, $deps = array(), $ver = false, $media = 'all' ) {
+	wp_enqueue_style( $handle, $src, $deps, $ver, $media );
+	do_action( 'foogallery_enqueue_style', $handle, $src, $deps, $ver, $media );
+}
+
+
+/**
+ * Returns all foogallery post objects that are attached to the post
+ *
+ * @param $post_id int The ID of the post
+ *
+ * @return array List of foogallery posts.
+ */
+function foogallery_get_galleries_attached_to_post( $post_id ) {
+	$gallery_ids = get_post_meta( $post_id, FOOGALLERY_META_POST_USAGE, false );
+
+	if ( !empty( $gallery_ids ) ) {
+		return get_posts( array(
+			'post_type'      => array( FOOGALLERY_CPT_GALLERY, ),
+			'post_status'    => array( 'draft', 'publish' ),
+			'posts_per_page' => -1,
+			'include'        => $gallery_ids
+		) );
+	}
+
+	return array();
+}
+
+/**
+ * Clears all css load optimization post meta
+ */
+function foogallery_clear_all_css_load_optimizations() {
+	delete_post_meta_by_key( FOOGALLERY_META_POST_USAGE_CSS );
+}
+
+function foogallery_perform_version_check() {
+	$checker = new FooGallery_Version_Check();
+	$checker->perform_check();
 }

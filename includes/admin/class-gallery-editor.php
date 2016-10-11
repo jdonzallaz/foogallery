@@ -24,6 +24,10 @@ if ( ! class_exists( 'FooGallery_Admin_Gallery_Editor' ) ) {
 			add_action( 'wp_ajax_foogallery_tinymce_load_info', array( $this, 'ajax_get_gallery_info' ) );
 		}
 
+		private function should_hide_editor_button() {
+			return 'on' == foogallery_get_setting( 'hide_editor_button' );
+		}
+
 		/**
 		 * Adds a gallery insert button into the editor
 		 *
@@ -32,6 +36,10 @@ if ( ! class_exists( 'FooGallery_Admin_Gallery_Editor' ) ) {
 		 * @return string $buttons    the amended media buttons
 		 */
 		public function add_media_button( $buttons ) {
+
+			if ( $this->should_hide_editor_button() ) {
+				return $buttons;
+			}
 
 			//render the gallery modal
 			add_action( 'admin_footer', array( $this, 'render_gallery_modal' ) );
@@ -50,6 +58,12 @@ if ( ! class_exists( 'FooGallery_Admin_Gallery_Editor' ) ) {
 		 * Adds our custom plugin to the tinyMCE editor
 		 */
 		public function add_tinymce_plugin() {
+
+			// get out if we do not want to add the button
+			if ( $this->should_hide_editor_button() ) {
+				return;
+			}
+
 			// check user permissions
 			if ( ! current_user_can( 'edit_posts' ) && ! current_user_can( 'edit_pages' ) ) {
 				return;
@@ -110,7 +124,7 @@ if ( ! class_exists( 'FooGallery_Admin_Gallery_Editor' ) ) {
 					display: inline-block;
 				}
 				.foogallery-modal-reload-container a.button {
-					margin-top:18px !important;
+					margin-top:15% !important;
 				}
 				.foogallery-modal-reload-container a span {
 					margin-top: 3px;
@@ -140,6 +154,8 @@ if ( ! class_exists( 'FooGallery_Admin_Gallery_Editor' ) ) {
 					width: 200px;
 					height: 200px;
 					cursor: pointer;
+					background-position: center center;
+					background-size: cover !important;
 				}
 
 				/* Stacks creted by the use of generated content */
@@ -253,7 +269,7 @@ if ( ! class_exists( 'FooGallery_Admin_Gallery_Editor' ) ) {
 			<?php wp_nonce_field( 'foogallery_load_galleries', 'foogallery_load_galleries', false ); ?>
 			<div class="foogallery-modal-wrapper" style="display: none;">
 				<div class="media-modal wp-core-ui">
-					<a class="media-modal-close" href="#"><span class="media-modal-icon"></span></a>
+					<button type="button" class="button-link media-modal-close"><span class="media-modal-icon"><span class="screen-reader-text">Close media panel</span></span></button>
 					<div class="media-modal-content">
 						<div class="media-frame wp-core-ui hide-menu hide-router foogallery-meta-wrap">
 							<div class="media-frame-title">
@@ -352,7 +368,7 @@ if ( ! class_exists( 'FooGallery_Admin_Gallery_Editor' ) ) {
 				<?php } ?>
 				<li class="foogallery-pile">
 					<div class="foogallery-gallery-select foogallery-add-gallery">
-						<a href="<?php echo foogallery_admin_add_gallery_url(); ?>" target="_blank" class="thumbnail" style="display: table;">
+						<a href="<?php echo esc_url( foogallery_admin_add_gallery_url() ); ?>" target="_blank" class="thumbnail" style="display: table;">
 							<span></span>
 							<div class="foogallery-gallery-select-inner" >
 								<h3><?php _e( 'Add New Gallery', 'foogallery' ); ?></h3>

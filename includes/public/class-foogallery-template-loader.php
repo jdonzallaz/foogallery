@@ -29,58 +29,87 @@ class FooGallery_Template_Loader {
 		//load our gallery
 		$current_foogallery = $this->find_gallery( $args );
 
-		//find the gallery template we will use to render the gallery
-		$current_foogallery_template = $this->get_arg( $args, 'template', $current_foogallery->gallery_template );
-
-		//set a default if we have no gallery template
-		if ( empty($current_foogallery_template) ) {
-			$current_foogallery_template = foogallery_get_default( 'gallery_template' );
-		}
-
-		//check if we have any attachments
-		if ( ! $current_foogallery->has_attachments() ) {
-			//no attachments!
-			do_action( "foogallery_template_no_attachments-($current_foogallery_template)", $current_foogallery );
+		if ( false === $current_foogallery ) {
+			//we could not find the gallery!
+			_e( 'The gallery was not found!', 'foogallery' );
 		} else {
 
-			//create locator instance
-			$instance_name = FOOGALLERY_SLUG . '_gallery_templates';
-			$loader = new Foo_Plugin_File_Locator_v1( $instance_name, FOOGALLERY_FILE, 'templates', FOOGALLERY_SLUG );
+			//check if the gallery is password protected
+			if ( post_password_required( $current_foogallery->_post ) ) {
+				echo get_the_password_form( $current_foogallery->_post );
+				return;
+			}
 
-			//allow extensions to very easily add pickup locations for their files
-			$this->add_extension_pickup_locations( $loader, apply_filters( $instance_name . '_files', array() ) );
+			//find the gallery template we will use to render the gallery
+			$current_foogallery_template = $this->get_arg( $args, 'template', $current_foogallery->gallery_template );
 
-			if ( false !== ($template_location = $loader->locate_file( "gallery-{$current_foogallery_template}.php" )) ) {
+			//set a default if we have no gallery template
+			if ( empty( $current_foogallery_template ) ) {
+				$current_foogallery_template = foogallery_get_default( 'gallery_template' );
+			}
 
-				//we have found a template!
-				do_action( 'foogallery_located_template', $current_foogallery );
-				do_action( "foogallery_located_template-{$current_foogallery_template}", $current_foogallery );
-
-				//try to include some JS
-				if ( false !== ($js_location = $loader->locate_file( "gallery-{$current_foogallery_template}.js" )) ) {
-					wp_enqueue_script( "foogallery-template-{$current_foogallery_template}", $js_location['url'] );
-				}
-
-				//try to include some CSS
-				if ( false !== ($css_location = $loader->locate_file( "gallery-{$current_foogallery_template}.css" )) ) {
-					wp_enqueue_style( "foogallery-template-{$current_foogallery_template}", $css_location['url'] );
-				}
-
-				//finally include the actual php template!
-				if ( $template_location ) {
-					load_template( $template_location['path'], false );
-				}
-
-				//we have loaded all files, now let extensions do some stuff
-				do_action( "foogallery_loaded_template", $current_foogallery );
-				do_action( "foogallery_loaded_template-($current_foogallery_template)", $current_foogallery );
-
+			//check if we have any attachments
+			if ( ! $current_foogallery->has_attachments() ) {
+				//no attachments!
+				do_action( "foogallery_template_no_attachments-($current_foogallery_template)", $current_foogallery );
 			} else {
-				//we could not find a template!
-				_e( 'No gallery template found!', 'foogallery' );
+
+				//create locator instance
+                $loader = $this->create_locator_instance();
+
+				if ( false !== ( $template_location = $loader->locate_file( "gallery-{$current_foogallery_template}.php" ) ) ) {
+
+					//we have found a template!
+					do_action( 'foogallery_located_template', $current_foogallery );
+					do_action( "foogallery_located_template-{$current_foogallery_template}", $current_foogallery );
+
+					//try to include some JS
+					if ( false !== ( $js_location = $loader->locate_file( "gallery-{$current_foogallery_template}.js" ) ) ) {
+						wp_enqueue_script( "foogallery-template-{$current_foogallery_template}", $js_location['url'] );
+                        do_action( 'foogallery_template_enqueue_script', $current_foogallery_template, $js_location['url'] );
+					}
+
+					//try to include some CSS
+					if ( false !== ( $css_location = $loader->locate_file( "gallery-{$current_foogallery_template}.css" ) ) ) {
+						foogallery_enqueue_style( "foogallery-template-{$current_foogallery_template}", $css_location['url'], array(), FOOGALLERY_VERSION );
+					}
+
+					//finally include the actual php template!
+					if ( $template_location ) {
+						load_template( $template_location['path'], false );
+					}
+
+					//cater for lightbox extensions needing to add styles and javascript
+					$lightbox = foogallery_gallery_template_setting( 'lightbox' );
+					if ( !empty( $lightbox ) ) {
+						do_action( "foogallery_template_lightbox-{$lightbox}", $current_foogallery );
+					}
+
+					//we have loaded all files, now let extensions do some stuff
+					do_action( "foogallery_loaded_template", $current_foogallery );
+					do_action( "foogallery_loaded_template-($current_foogallery_template)", $current_foogallery );
+				} else {
+					//we could not find a template!
+					_e( 'No gallery template found!', 'foogallery' );
+				}
 			}
 		}
 	}
+
+    /**
+     * Creates a locator instance used for including template files
+     *
+     *
+     */
+    public function create_locator_instance() {
+        $instance_name = FOOGALLERY_SLUG . '_gallery_templates';
+        $loader        = new Foo_Plugin_File_Locator_v1( $instance_name, FOOGALLERY_FILE, 'templates', FOOGALLERY_SLUG );
+
+        //allow extensions to very easily add pickup locations for their files
+        $this->add_extension_pickup_locations( $loader, apply_filters( $instance_name . '_files', array() ) );
+
+        return $loader;
+    }
 
 	/**
 	 * Add pickup locations to the loader to make it easier for extensions
@@ -140,7 +169,7 @@ class FooGallery_Template_Loader {
 		} else {
 
 			//take into account the cases where id is passed in via the 'gallery' attribute
-			$gallery = $this->get_arg( 'gallery', 0 );
+			$gallery = $this->get_arg( $args, 'gallery', 0 );
 
 			if ( intval( $gallery ) > 0 ) {
 				//we have an id, so load

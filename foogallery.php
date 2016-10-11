@@ -1,25 +1,13 @@
 <?php
 /**
- * FooGallery
- *
- * The Most Intuitive and Extensible Gallery Creation and Management Tool Ever Created for WordPress.
- *
- * @package   FooGallery
- * @author    Brad Vincent <brad@fooplugins.com>
- * @license   GPL-2.0+
- * @link      https://github.com/fooplugins/foogallery
- * @copyright 2013 FooPlugins LLC
- *
- * @wordpress-plugin
- * Plugin Name: FooGallery
- * Plugin URI:  https://github.com/fooplugins/foogallery
- * Description: Better Image Galleries for WordPress
- * Version:     1.1.8.2
+ * Plugin Name: Foo Gallery
+ * Description: Foo Gallery is the most intuitive and extensible gallery management tool ever created for WordPress
+ * Version:     1.2.8
  * Author:      FooPlugins
+ * Plugin URI:  https://foo.gallery
  * Author URI:  http://fooplugins.com
  * Text Domain: foogallery
  * License:     GPL-2.0+
- * License URI: http://www.gnu.org/licenses/gpl-2.0.txt
  * Domain Path: /languages
  */
 
@@ -32,7 +20,7 @@ define( 'FOOGALLERY_SLUG', 'foogallery' );
 define( 'FOOGALLERY_PATH', plugin_dir_path( __FILE__ ) );
 define( 'FOOGALLERY_URL', plugin_dir_url( __FILE__ ) );
 define( 'FOOGALLERY_FILE', __FILE__ );
-define( 'FOOGALLERY_VERSION', '1.1.8.2' );
+define( 'FOOGALLERY_VERSION', '1.2.8' );
 
 /**
  * FooGallery_Plugin class
@@ -90,11 +78,38 @@ if ( ! class_exists( 'FooGallery_Plugin' ) ) {
 
 			if ( is_admin() ) {
 				new FooGallery_Admin();
+				add_action( 'wpmu_new_blog', array( $this, 'set_default_extensions_for_multisite_network_activated' ) );
 			} else {
 				new FooGallery_Public();
 			}
 
 			new FooGallery_Thumbnails();
+
+			new FooGallery_Polylang_Compatibility();
+
+			$checker = new FooGallery_Version_Check();
+			$checker->wire_up_checker();
+		}
+
+		/**
+		 * Set default extensions when a new site is created in multisite and FooGallery is network activated
+		 *
+		 * @since 1.2.5
+		 *
+		 * @param int $blog_id The ID of the newly created site
+		 */
+		public function set_default_extensions_for_multisite_network_activated( $blog_id ) {
+			switch_to_blog( $blog_id );
+
+			if ( false === get_option( FOOGALLERY_EXTENSIONS_AUTO_ACTIVATED_OPTIONS_KEY, false ) ) {
+				$api = new FooGallery_Extensions_API();
+
+				$api->auto_activate_extensions();
+
+				update_option( FOOGALLERY_EXTENSIONS_AUTO_ACTIVATED_OPTIONS_KEY, true );
+			}
+
+			restore_current_blog();
 		}
 
 		/**
@@ -145,12 +160,14 @@ if ( ! class_exists( 'FooGallery_Plugin' ) ) {
 				$api->auto_activate_extensions();
 
 				update_option( FOOGALLERY_EXTENSIONS_AUTO_ACTIVATED_OPTIONS_KEY, true );
-
 			}
 			if ( false === $multisite ) {
 				//Make sure we redirect to the welcome page
 				set_transient( FOOGALLERY_ACTIVATION_REDIRECT_TRANSIENT_KEY, true, 30 );
 			}
+
+			//force a version check on activation to make sure housekeeping is performed
+			foogallery_perform_version_check();
 		}
 
 		/**

@@ -6,8 +6,10 @@
 if ( ! class_exists( 'FooGallery_Extensions_API' ) ) {
 
 	define( 'FOOGALLERY_EXTENSIONS_ENDPOINT', 'https://raw.githubusercontent.com/fooplugins/foogallery-extensions/master/extensions.json' );
+	define( 'FOOGALLERY_EXTENSIONS_FUTURE_ENDPOINT', 'https://raw.githubusercontent.com/fooplugins/foogallery-extensions/future/extensions.json' );
 	//define( 'FOOGALLERY_EXTENSIONS_ENDPOINT', FOOGALLERY_URL . 'extensions/extensions.json.js' );
 	define( 'FOOGALLERY_EXTENSIONS_LOADING_ERRORS', 'foogallery_extensions_loading_errors' );
+	define( 'FOOGALLERY_EXTENSIONS_LOADING_ERRORS_RESPONSE', 'foogallery_extensions_loading_errors_response' );
 	define( 'FOOGALLERY_EXTENSIONS_AVAILABLE_TRANSIENT_KEY', 'foogallery_extensions_available' );
 	define( 'FOOGALLERY_EXTENSIONS_MESSAGE_TRANSIENT_KEY', 'foogallery_extensions_message' );
 	define( 'FOOGALLERY_EXTENSIONS_ACTIVATED_OPTIONS_KEY', 'foogallery_extensions_activated' );
@@ -16,19 +18,25 @@ if ( ! class_exists( 'FooGallery_Extensions_API' ) ) {
 	define( 'FOOGALLERY_EXTENSIONS_AUTO_ACTIVATED_OPTIONS_KEY', 'foogallery_extensions_auto_activated' );
 
 	/**
-	 * @TODO
+	 * Foogalolery Extensions Manager Class
 	 * Class FooGallery_Extensions_API
 	 */
 	class FooGallery_Extensions_API {
 
 		/**
-		 * @TODO
+		 * Internal list of all extensions
 		 * @var array
 		 */
 		private $extensions = false;
 
 		/**
-		 * @TODO
+		 * Internal list of all extension slugs
+		 * @var array
+		 */
+		private $extension_slugs = false;
+
+		/**
+		 * Extension API constructor
 		 * @param bool $load
 		 */
 		function __construct( $load = false ) {
@@ -37,39 +45,75 @@ if ( ! class_exists( 'FooGallery_Extensions_API' ) ) {
 			}
 		}
 
+		/**
+		 * Returns true if there were errors loading extensions
+		 * @return bool
+		 */
 		public function has_extension_loading_errors() {
 			return get_option( FOOGALLERY_EXTENSIONS_LOADING_ERRORS );
 		}
 
 		/**
-		 * @TODO
+		 * Returns the actual reposnse when there were errors trying to fetch all extensions
+		 * @return mixed
+		 */
+		public function get_extension_loading_errors_response() {
+			return get_option( FOOGALLERY_EXTENSIONS_LOADING_ERRORS_RESPONSE );
+		}
+
+		/**
+		 * Get back the extension endpoint based on a setting
+		 */
+		public function get_extensions_endpoint() {
+			if ( 'on' === foogallery_get_setting( 'use_future_endpoint' ) ) {
+				$extension_url = FOOGALLERY_EXTENSIONS_FUTURE_ENDPOINT;
+			} else {
+				$extension_url = FOOGALLERY_EXTENSIONS_ENDPOINT;
+			}
+			return apply_filters('foogallery_extension_api_endpoint', $extension_url );
+		}
+
+		/**
+		 * Reset all previous errors
+		 */
+		public function reset_errors() {
+			delete_option( FOOGALLERY_EXTENSIONS_LOADING_ERRORS );
+			delete_option( FOOGALLERY_EXTENSIONS_LOADING_ERRORS_RESPONSE );
+		}
+
+		/**
+		 * Load all available extensions from the public endpoint and store in a transient for later use
 		 */
 		private function load_available_extensions() {
 			if ( false === ( $this->extensions = get_transient( FOOGALLERY_EXTENSIONS_AVAILABLE_TRANSIENT_KEY ) ) ) {
 
 				//clear any previous state
-				delete_option( FOOGALLERY_EXTENSIONS_LOADING_ERRORS );
+				$this->reset_errors();
 				$this->extensions = null;
 				$expires = 60 * 60 * 24; //1 day
 
-				$extension_url = apply_filters('foogallery_extension_api_endpoint', FOOGALLERY_EXTENSIONS_ENDPOINT );
+				$extension_url = $this->get_extensions_endpoint();
 
 				//fetch the data from our public list of extensions hosted on github
-				$response = wp_remote_get( $extension_url );
+				$response = wp_remote_get( $extension_url, array( 'sslverify' => false ) );
 
 				if( ! is_wp_error( $response ) ) {
-					$this->extensions = @json_decode( $response['body'], true );
 
-					//if we got a valid list of extensions then calculate which are new and cache the result
-					if ( is_array( $this->extensions ) ) {
-						$this->determine_new_extensions( );
-						$this->save_slugs_for_new_calculations();
+					if ( $response['response']['code'] == 200 ) {
+						$this->extensions = @json_decode( $response['body'], true );
+
+						//if we got a valid list of extensions then calculate which are new and cache the result
+						if ( is_array( $this->extensions ) ) {
+							$this->determine_new_extensions( );
+							$this->save_slugs_for_new_calculations();
+						}
 					}
 				}
 
 				if ( ! is_array( $this->extensions ) ) {
 					//there was some problem getting a list of extensions. Could be a network error, or the extension json was malformed
 					update_option( FOOGALLERY_EXTENSIONS_LOADING_ERRORS, true );
+					update_option( FOOGALLERY_EXTENSIONS_LOADING_ERRORS_RESPONSE, $response );
 					$this->extensions = $this->default_extenions_in_case_of_emergency();
 					$expires = 5 * 60; //Only cache for 5 minutes if there are errors.
 				}
@@ -103,21 +147,19 @@ if ( ! class_exists( 'FooGallery_Extensions_API' ) ) {
 				'activated_by_default' => true,
 			);
 
-//			The album extension - coming soon!
-//			$extensions[] =	array(
-//				'slug' => 'albums',
-//				'class' => 'FooGallery_Albums_Extension',
-//				'title' => 'Albums',
-//				'categories' =>	array( 'Featured', 'Free' ),
-//				'description' => 'Group your galleries into albums. Boom!',
-//				'html' => 'Group your galleries into albums. Boom!',
-//				'author' => 'FooPlugins',
-//				'author_url' => 'http://fooplugins.com',
-//				'thumbnail' => '/extensions/albums/foogallery-albums.png',
-//				'tags' => array( 'functionality' ),
-//				'source' => 'bundled',
-//				'css_class' => 'coming_soon'
-//			);
+			$extensions[] =	array(
+				'slug' => 'albums',
+				'class' => 'FooGallery_Albums_Extension',
+				'title' => 'Albums',
+				'categories' =>	array( 'Featured', 'Free' ),
+				'description' => 'Group your galleries into albums. Boom!',
+				'html' => 'Group your galleries into albums. Boom!',
+				'author' => 'FooPlugins',
+				'author_url' => 'http://fooplugins.com',
+				'thumbnail' => '/extensions/albums/foogallery-albums.png',
+				'tags' => array( 'functionality' ),
+				'source' => 'bundled'
+			);
 
 			//FooBox lightbox
 			$extensions[] = array (
@@ -212,10 +254,17 @@ if ( ! class_exists( 'FooGallery_Extensions_API' ) ) {
 		}
 
 		/**
+		 * Clears the cached list of extensions
+		 */
+		public function clear_cached_extensions() {
+			delete_transient( FOOGALLERY_EXTENSIONS_AVAILABLE_TRANSIENT_KEY );
+		}
+
+		/**
 		 * Reload the extensions from the public endpoint
 		 */
 		public function reload() {
-			delete_transient( FOOGALLERY_EXTENSIONS_AVAILABLE_TRANSIENT_KEY );
+			$this->clear_cached_extensions();
 			$this->load_available_extensions();
 		}
 
@@ -235,20 +284,31 @@ if ( ! class_exists( 'FooGallery_Extensions_API' ) ) {
 
 			if ( count( $extra_extensions ) > 0 ) {
 				//get a list of slugs so we can determine duplicates!
-				$slugs = array();
+				$this->extension_slugs = array();
 				foreach ( $this->extensions as $extension ) {
-					$slugs[] = $extension['slug'];
+					$this->extension_slugs[] = $extension['slug'];
 				}
 
 				//only add if not a duplicate
 				foreach ( $extra_extensions as $extension ) {
-					if ( ! in_array( $extension['slug'], $slugs ) ) {
+					if ( ! in_array( $extension['slug'], $this->extension_slugs ) ) {
 						$this->extensions[] = $extension;
 					}
 				}
 			}
 
 			return $this->extensions;
+		}
+
+		/**
+		 * Get all loaded extensions slugs
+		 * @return array
+		 */
+		function get_all_slugs() {
+			//load all extensions first!
+			$this->get_all();
+
+			return $this->extension_slugs;
 		}
 
 		/**
@@ -319,11 +379,10 @@ if ( ! class_exists( 'FooGallery_Extensions_API' ) ) {
 		/**
 		 * @TODO
 		 * @param      $slug
-		 * @param bool $check_plugins
 		 *
 		 * @return bool
 		 */
-		public function is_active( $slug, $check_plugins = false ) {
+		public function is_active( $slug ) {
 			$active_extensions = $this->get_active_extensions();
 
 			if ( $active_extensions ) {
@@ -595,9 +654,9 @@ if ( ! class_exists( 'FooGallery_Extensions_API' ) ) {
 				return apply_filters( 'foogallery_extensions_download_success-' . $slug, array(
 					'message' => sprintf( __( 'The extension %s was successfully downloaded and can now be activated. %s', 'foogallery' ),
 						"<strong>{$extension['title']}</strong>",
-						'<a href="' . add_query_arg( array(
+						'<a href="' . esc_url( add_query_arg( array(
 								'action' => 'activate',
-								'extension' => $slug, ) ) . '">' . __( 'Activate immediately', 'foogallery' ) . '</a>'
+								'extension' => $slug, ) ) ) . '">' . __( 'Activate immediately', 'foogallery' ) . '</a>'
 					),
 					'type' => 'success',
 				) );

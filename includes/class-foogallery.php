@@ -45,6 +45,8 @@ class FooGallery extends stdClass {
 		$this->attachment_ids = is_array( $attachment_meta ) ? array_filter( $attachment_meta ) : array();
 		$this->gallery_template = get_post_meta( $post->ID, FOOGALLERY_META_TEMPLATE, true );
 		$this->settings = get_post_meta( $post->ID, FOOGALLERY_META_SETTINGS, true );
+		$this->custom_css = get_post_meta( $post->ID, FOOGALLERY_META_CUSTOM_CSS, true );
+		$this->sorting = get_post_meta( $post->ID, FOOGALLERY_META_SORT, true );
 		do_action( 'foogallery_foogallery_instance_after_load', $this, $post );
 	}
 
@@ -171,6 +173,14 @@ class FooGallery extends stdClass {
 	}
 
 	/**
+	 * Returns true if the gallery is newly created and not yet saved
+	 */
+	public function is_new() {
+		$settings = get_post_meta( $this->ID, FOOGALLERY_META_SETTINGS, true );
+		return empty( $settings );
+	}
+
+	/**
 	 * Get a comma separated list of attachment ids
 	 * @return string
 	 */
@@ -194,18 +204,39 @@ class FooGallery extends stdClass {
 
 			if ( ! empty( $this->attachment_ids ) ) {
 
-				$attachments = get_posts( array(
+				add_action( 'pre_get_posts', array( $this, 'force_gallery_ordering' ), 99 );
+
+				$attachment_query_args = apply_filters( 'foogallery_attachment_get_posts_args', array(
 					'post_type'      => 'attachment',
 					'posts_per_page' => -1,
 					'post__in'       => $this->attachment_ids,
-					'orderby'        => 'post__in',
+					'orderby'        => foogallery_sorting_get_posts_orderby_arg( $this->sorting ),
+					'order'          => foogallery_sorting_get_posts_order_arg( $this->sorting )
 				) );
+
+				$attachments = get_posts( $attachment_query_args );
+
+				remove_action( 'pre_get_posts', array( $this, 'force_gallery_ordering' ), 99 );
 
 				$this->_attachments = array_map( array( 'FooGalleryAttachment', 'get' ), $attachments );
 			}
 		}
 
 		return $this->_attachments;
+	}
+
+	/**
+	 * This forces the attachments to be fetched using the correct ordering.
+	 * Some plugins / themes override this globally for some reason, so this is a preventative measure to ensure sorting is correct
+	 * @param $query WP_Query
+	 */
+	public function force_gallery_ordering( $query ) {
+		//only care about attachments
+		if ( array_key_exists( 'post_type', $query->query ) &&
+		     'attachment' === $query->query['post_type'] ) {
+			$query->set( 'orderby', foogallery_sorting_get_posts_orderby_arg( $this->sorting ) );
+			$query->set( 'order', foogallery_sorting_get_posts_order_arg( $this->sorting ) );
+		}
 	}
 
 	/**
@@ -268,15 +299,24 @@ class FooGallery extends stdClass {
 	}
 
 	public function image_count() {
+		$no_images_text = foogallery_get_setting( 'language_images_count_none_text',   __( 'No images', 'foogallery' ) );
+		$singular_text  = foogallery_get_setting( 'language_images_count_single_text', __( '1 image', 'foogallery' ) );
+		$plural_text    = foogallery_get_setting( 'language_images_count_plural_text', __( '%s images', 'foogallery' ) );
+
 		$count = sizeof( $this->attachment_ids );
+
 		switch ( $count ) {
 			case 0:
-				return __( 'No images', 'foogallery' );
+				$count_text = $no_images_text === false ? __( 'No images', 'foogallery' ) : $no_images_text;
+				break;
 			case 1:
-				return __( '1 image', 'foogallery' );
+				$count_text = $singular_text === false ? __( '1 image', 'foogallery' ) : $singular_text;
+				break;
 			default:
-				return sprintf( __( '%s images', 'foogallery' ), $count );
+				$count_text = sprintf( $plural_text === false ?  __( '%s images', 'foogallery' ) : $plural_text, $count );
 		}
+
+		return apply_filters( 'foogallery_image_count', $count_text, $this );
 	}
 
 	public function find_usages() {
@@ -326,5 +366,17 @@ class FooGallery extends stdClass {
 		}
 
 		return false;
+	}
+
+	/**
+	 * Loads default settings from another gallery if it is set on the settings page
+	 */
+	public function load_default_settings_if_new() {
+		if ( $this->is_new() ) {
+			$default_gallery_id = foogallery_get_setting( 'default_gallery_settings' );
+			$this->gallery_template = get_post_meta( $default_gallery_id, FOOGALLERY_META_TEMPLATE, true );
+			$this->settings = get_post_meta( $default_gallery_id, FOOGALLERY_META_SETTINGS, true );
+			$this->sorting = foogallery_get_setting( 'gallery_sorting' );
+		}
 	}
 }
